@@ -73,7 +73,7 @@
 
     .buttons{
       position:relative;
-      height:100px; /* space for the runaway button */
+      height:110px; /* a bit more room for smoother dodges */
       margin-top:10px;
       display:grid;
       place-items:center;
@@ -103,6 +103,7 @@
       box-shadow: 0 18px 38px rgba(255,77,136,.42);
     }
 
+    /* Smoothly moving "No" button */
     #noBtn{
       position:absolute;
       left:50%;
@@ -112,6 +113,11 @@
       color:#6b3347;
       border:1px solid rgba(0,0,0,.10);
       box-shadow: 0 12px 26px rgba(0,0,0,.12);
+      will-change: left, top, transform;
+      transition:
+        left 220ms cubic-bezier(.2,.9,.2,1),
+        top  220ms cubic-bezier(.2,.9,.2,1),
+        transform 220ms cubic-bezier(.2,.9,.2,1);
     }
 
     .result{
@@ -163,23 +169,59 @@
     const result = document.getElementById("result");
 
     let dodges = 0;
+    let lastX = null, lastY = null;
 
     function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
-    function moveNoButton() {
+    function moveNoButton(avoidX, avoidY) {
       const area = playArea.getBoundingClientRect();
-      const btn = noBtn.getBoundingClientRect();
+      const btn  = noBtn.getBoundingClientRect();
 
-      const padding = 10;
+      const padding = 8;
+
+      // Current position (relative to play area)
+      const currentLeft = parseFloat(noBtn.style.left || (area.width/2));
+      const currentTop  = parseFloat(noBtn.style.top  || 62);
+
+      // If we don't know where to avoid, avoid center
+      const ax = (avoidX ?? (area.left + area.width/2));
+      const ay = (avoidY ?? (area.top  + area.height/2));
+
+      // Vector from avoid point -> button center
+      const btnCenterX = area.left + currentLeft + btn.width/2;
+      const btnCenterY = area.top  + currentTop  + btn.height/2;
+
+      let dx = btnCenterX - ax;
+      let dy = btnCenterY - ay;
+
+      // Normalize vector (avoid zero-length)
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len;
+      dy /= len;
+
+      // Move distance (slightly shrinks over time so it doesn't fly too far)
+      const base = 140;
+      const dist = Math.max(90, base - Math.min(dodges * 4, 50));
+
+      // Proposed new position
+      let newLeft = currentLeft + dx * dist;
+      let newTop  = currentTop  + dy * dist;
+
+      // Small randomness so it doesn't get stuck on edges
+      newLeft += (Math.random() - 0.5) * 50;
+      newTop  += (Math.random() - 0.5) * 35;
+
+      // Clamp inside play area
       const maxX = area.width - btn.width - padding;
       const maxY = area.height - btn.height - padding;
 
-      const x = clamp(Math.random() * maxX, padding, maxX);
-      const y = clamp(Math.random() * maxY, padding, maxY);
+      newLeft = clamp(newLeft, padding, maxX);
+      newTop  = clamp(newTop,  padding, maxY);
 
-      noBtn.style.left = x + "px";
-      noBtn.style.top = y + "px";
+      // Apply position (smooth via CSS transition)
       noBtn.style.transform = "translateX(0)";
+      noBtn.style.left = `${newLeft}px`;
+      noBtn.style.top  = `${newTop}px`;
 
       dodges++;
       if (dodges === 3) result.textContent = "Nice try 😅";
@@ -187,12 +229,40 @@
       if (dodges === 10) result.textContent = "Please 🥹";
     }
 
-    // Desktop hover dodge + mobile tap dodge
-    noBtn.addEventListener("mouseenter", moveNoButton);
+    // Track cursor location so the dodge feels intentional
+    playArea.addEventListener("mousemove", (e) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    // Dodge when the cursor gets close (smoother than only on hover)
+    playArea.addEventListener("mousemove", () => {
+      const area = playArea.getBoundingClientRect();
+      const btn  = noBtn.getBoundingClientRect();
+
+      const btnCx = btn.left + btn.width/2;
+      const btnCy = btn.top  + btn.height/2;
+
+      const mx = lastX ?? (area.left + area.width/2);
+      const my = lastY ?? (area.top  + area.height/2);
+
+      const d = Math.hypot(btnCx - mx, btnCy - my);
+
+      // If mouse gets within 90px, dodge
+      if (d < 90) moveNoButton(mx, my);
+    });
+
+    // Mobile: dodge away from finger tap location
     noBtn.addEventListener("touchstart", (e) => {
       e.preventDefault();
-      moveNoButton();
+      const t = e.touches[0];
+      moveNoButton(t.clientX, t.clientY);
     }, { passive: false });
+
+    // Fallback: if it still gets hovered, dodge
+    noBtn.addEventListener("mouseenter", () => {
+      moveNoButton(lastX, lastY);
+    });
 
     yesBtn.addEventListener("click", () => {
       result.textContent = "LETS GOOOOOO😘";
