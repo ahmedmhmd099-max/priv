@@ -24,7 +24,7 @@
       color:var(--text);
       overflow:hidden;
 
-      /* Background image (upload bg.jpg to repo root) */
+      /* Background image (upload bg.jpg to same folder as this html) */
       background:
         linear-gradient(180deg, rgba(0,0,0,.30), rgba(0,0,0,.30)),
         url("bg.jpg") center / cover no-repeat fixed;
@@ -132,6 +132,72 @@
       font-size:13px;
       opacity:.75;
     }
+
+    /* Overlay */
+    .overlay{
+      position:fixed;
+      inset:0;
+      display:none;
+      place-items:center;
+      background: rgba(0,0,0,.55);
+      z-index: 9999;
+      padding: 18px;
+    }
+
+    .overlay-card{
+      width:min(560px, 92vw);
+      background: rgba(255,255,255,.92);
+      border-radius:24px;
+      padding:22px 18px;
+      text-align:center;
+      box-shadow: 0 18px 50px rgba(0,0,0,.25);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transform: translateY(10px) scale(.98);
+      opacity: 0;
+      transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 260ms ease;
+    }
+
+    .overlay.show .overlay-card{
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+
+    .overlay-title{
+      font-size: clamp(28px, 3.6vw, 40px);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .overlay-sub{
+      margin-top: 10px;
+      font-size: 16px;
+      font-weight: 800;
+      opacity: .9;
+    }
+
+    .overlay-btn{
+      margin-top: 16px;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 900;
+      cursor: pointer;
+      background: var(--yes);
+      color: #fff;
+      box-shadow: 0 14px 30px rgba(255,77,136,.35);
+    }
+
+    /* Confetti canvas on top of everything */
+    #confetti{
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 10000;
+      display: none;
+    }
   </style>
 </head>
 
@@ -148,6 +214,18 @@
     <div class="result" id="result"></div>
     <div class="tiny">Feel me.</div>
   </div>
+
+  <!-- Overlay -->
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="overlay-card">
+      <div class="overlay-title">LETS GOOOOOO 😘💘</div>
+      <div class="overlay-sub">Mayoosh is officially my Valentine 🩶</div>
+      <button id="closeOverlay" class="overlay-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- Confetti -->
+  <canvas id="confetti"></canvas>
 
   <script>
     // Floating hearts in the background
@@ -264,8 +342,114 @@
       moveNoButton(lastX, lastY);
     });
 
+    // === Overlay + Confetti ===
+    const overlay = document.getElementById("overlay");
+    const closeOverlay = document.getElementById("closeOverlay");
+    const confettiCanvas = document.getElementById("confetti");
+    const ctx = confettiCanvas.getContext("2d");
+
+    let confettiParticles = [];
+    let confettiAnim = null;
+    let confettiEndAt = 0;
+
+    function resizeConfetti() {
+      const dpr = window.devicePixelRatio || 1;
+      confettiCanvas.width = Math.floor(window.innerWidth * dpr);
+      confettiCanvas.height = Math.floor(window.innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener("resize", resizeConfetti);
+
+    function rand(min, max) { return Math.random() * (max - min) + min; }
+
+    function makeConfettiBurst(count = 180) {
+      confettiParticles = [];
+      for (let i = 0; i < count; i++) {
+        confettiParticles.push({
+          x: rand(0, window.innerWidth),
+          y: rand(-30, -10),
+          vx: rand(-2.2, 2.2),
+          vy: rand(2.5, 6.2),
+          size: rand(6, 12),
+          rot: rand(0, Math.PI * 2),
+          vr: rand(-0.25, 0.25),
+          hue: Math.floor(rand(0, 360)),
+          life: rand(80, 160)
+        });
+      }
+    }
+
+    function drawConfetti() {
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      for (const p of confettiParticles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.02; // gravity
+        p.rot += p.vr;
+        p.life -= 1;
+
+        if (p.x < -20) p.x = window.innerWidth + 20;
+        if (p.x > window.innerWidth + 20) p.x = -20;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = `hsl(${p.hue} 90% 60%)`;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        ctx.restore();
+      }
+
+      confettiParticles = confettiParticles.filter(p => p.life > 0 && p.y < window.innerHeight + 40);
+
+      if (Date.now() < confettiEndAt && confettiParticles.length > 0) {
+        confettiAnim = requestAnimationFrame(drawConfetti);
+      } else {
+        stopConfetti();
+      }
+    }
+
+    function startConfetti(ms = 2200) {
+      resizeConfetti();
+      confettiCanvas.style.display = "block";
+      confettiEndAt = Date.now() + ms;
+      makeConfettiBurst(200);
+      cancelAnimationFrame(confettiAnim);
+      drawConfetti();
+    }
+
+    function stopConfetti() {
+      cancelAnimationFrame(confettiAnim);
+      confettiAnim = null;
+      confettiCanvas.style.display = "none";
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    }
+
+    function openOverlay() {
+      overlay.style.display = "grid";
+      overlay.classList.add("show");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+
+    function closeOverlayFn() {
+      overlay.classList.remove("show");
+      overlay.setAttribute("aria-hidden", "true");
+      setTimeout(() => {
+        overlay.style.display = "none";
+      }, 220);
+    }
+
+    closeOverlay.addEventListener("click", closeOverlayFn);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeOverlayFn();
+    });
+
     yesBtn.addEventListener("click", () => {
+      openOverlay();
+      startConfetti(2600);
+
       result.textContent = "LETS GOOOOOO😘";
+
       // Burst hearts
       for (let i = 0; i < 30; i++) {
         const s = document.createElement("div");
@@ -278,6 +462,7 @@
         document.body.appendChild(s);
         setTimeout(() => s.remove(), 6500);
       }
+
       yesBtn.disabled = true;
       noBtn.disabled = true;
     });
